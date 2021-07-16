@@ -5,4 +5,3 @@ stopwords.py
 utils/glove.42B.300d.txt 
 models/sarcasm_bilstm_tokenizer.json 
 models/sarcasm_bilstm.h5
-input/Sarcasm_Headlines_Dataset_v2.json
