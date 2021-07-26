@@ -1,6 +1,4 @@
-
 import re
-import time
 import warnings
 import spacy
 import matplotlib.pyplot as plt
@@ -65,8 +63,6 @@ def process_data(dataframe, stopwords, nlp, mode='none'):
         return dataframe
 
     headline_tmp = list(dataframe.headline)
-    start_time = time.time()
-
     
     headlines_lemmas = []
     headlines_tokens = []
@@ -101,13 +97,6 @@ def process_data(dataframe, stopwords, nlp, mode='none'):
             joined_sentence = re.sub(r"\s{2,}", " ", joined_sentence)
             headlines_lemmas.append(joined_sentence)
 
-    end_time = (time.time() - start_time)
-    if end_time <1:
-        print(f"Tokenization took {end_time*60:.2f}seconds.")
-    else:
-        
-        print(f"Tokenization took {end_time:.2f} minute(s).")
-                            
     if len(headlines_lemmas) > 0:
         dataframe.headline = headlines_lemmas
 
@@ -128,8 +117,6 @@ if __name__ == "__main__":
                                                 'senter', 'sentencizer'])
     processed_dataframe = process_data(sarcasm_dataframe, stopwords, 
                                        nlp, mode='lemmas')
-    print(processed_dataframe.head(15))
-
 
 # max_len = 32
 # embedding_dim = 300
