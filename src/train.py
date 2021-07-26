@@ -1,3 +1,4 @@
+
 import re
 import time
 import warnings
@@ -32,14 +33,14 @@ def load_training_data(datapath):
 
 
 def load_stopwords(filepath):
-    with open('stopwords.txt', 'r', encoding='utf-8') as file: 
+    with open(filepath, 'r', encoding='utf-8') as file: 
         stopwords = file.readlines()
         stopwords = [word.strip() for word in stopwords]
 
     return stopwords
 
 
-def process_data(dataframe, stopwords, mode, nlp_pipeline):
+def process_data(dataframe, stopwords, nlp, mode='none'):
     """
         Parameters
         ----------
@@ -56,6 +57,7 @@ def process_data(dataframe, stopwords, mode, nlp_pipeline):
                     `lemmas`: stopwords will be removed from the data
                     before being passed to the NLP pipeline AND tokens
                     will be replaced by their lemmas.
+                Default to none
             nlp: Spacy pipeline
                 NLP pipeline to apply to the data
     """
@@ -65,18 +67,20 @@ def process_data(dataframe, stopwords, mode, nlp_pipeline):
     headline_tmp = list(dataframe.headline)
     start_time = time.time()
 
+    
+    headlines_lemmas = []
+    headlines_tokens = []
+
+    unwanted_tokens = ['is', 'are', 'have', 'has', 'had', 'was', 
+                           'were', '\'s', 'n\'t', '-', '.', '%']
+
     for i in tqdm(range(len(headline_tmp))):
         sentence = headline_tmp[i]
-        nlp_sentence = (sentence)
+        nlp_sentence = nlp(sentence)
 
         filtered_lemmas = []
         filtered_tokens = []
-        headlines_lemmas = []
-        headlines_tokens = []
 
-        unwanted_tokens = ['is', 'are', 'have', 'has', 'had', 'was', 
-                           'were', '\'s', 'n\'t', '-', '.', '%']
-        
         for token in nlp_sentence:
             if token.pos_ not in ["SYM", "PUNCT", ".", 'DET']:
                 if token.text not in stopwords and token.text not in unwanted_tokens:
@@ -84,27 +88,32 @@ def process_data(dataframe, stopwords, mode, nlp_pipeline):
                         filtered_tokens.append(token.text)
                     else: 
                         filtered_lemmas.append(token.lemma_)
+
+        if mode == "stopwords":
+            joined_sentence = ' '.join(word for word in filtered_tokens)
+            joined_sentence = re.sub(r"( 's\b|\w*' s\b)", "'s", joined_sentence)
+            joined_sentence = re.sub(r"\s{2,}", " ", joined_sentence)
+            headlines_tokens.append(joined_sentence)
+
+        else: 
+            joined_sentence = ' '.join(word for word in filtered_lemmas)
+            joined_sentence = re.sub(r"( 's\b|\w*' s\b)", "'s", joined_sentence)
+            joined_sentence = re.sub(r"\s{2,}", " ", joined_sentence)
+            headlines_lemmas.append(joined_sentence)
+
+    end_time = (time.time() - start_time)
+    if end_time <1:
+        print(f"Tokenization took {end_time*60:.2f}seconds.")
+    else:
         
-    end_time = (time.time() - start_time)/60
-    print(f"Tokenization took {end_time:.2f} minute(s).")
+        print(f"Tokenization took {end_time:.2f} minute(s).")
                             
-    if len(filtered_lemmas) > 0:
-        joined_sentence = ' '.join(word for word in filtered_lemmas)
-        joined_sentence = re.sub(r"( 's\b|\w*' s\b)", "'s", joined_sentence)
-        joined_sentence = re.sub(r"\s{2,}", " ", joined_sentence)
-        headlines_lemmas.append(joined_sentence)
-    
+    if len(headlines_lemmas) > 0:
         dataframe.headline = headlines_lemmas
 
         return dataframe
 
-
-    elif len(filtered_tokens) > 0:
-        joined_sentence = ' '.join(word for word in filtered_tokens)
-        joined_sentence = re.sub(r"( 's\b|\w*' s\b)", "'s", joined_sentence)
-        joined_sentence = re.sub(r"\s{2,}", " ", joined_sentence)
-        headlines_tokens.append(joined_sentence)
-
+    elif len(headlines_tokens) > 0:
         dataframe.headline = headlines_tokens
 
         return dataframe
@@ -112,26 +121,15 @@ def process_data(dataframe, stopwords, mode, nlp_pipeline):
 
 if __name__ == "__main__":
     datapath =  "input/Sarcasm_Headlines_Dataset_v2.json"
+    sarcasm_dataframe = load_training_data(datapath)
+    stopwords = load_stopwords('utils/stopwords.txt')
+    nlp = spacy.load('en_core_web_sm', exclude=["ner" 'textcat', 'parser', 
+                                                'textcat_multilabel', 'transformer', 
+                                                'senter', 'sentencizer'])
+    processed_dataframe = process_data(sarcasm_dataframe, stopwords, 
+                                       nlp, mode='lemmas')
+    print(processed_dataframe.head(15))
 
-
-
-
-
-
-
-
-# headline_tmp = list(dataframe.headline)
-
-# headline = []
-# for sent in headline_tmp:
-#     filtered_list = []
-#     for word in sent.split():
-#         if word not in stopwords:
-#             filtered_list.append(word)
-#     join_str = ' '.join([str(ele) for ele in filtered_list])
-#     headline.append(join_str)
-
-# sarcasm_dataframe.headline = headline
 
 # max_len = 32
 # embedding_dim = 300
