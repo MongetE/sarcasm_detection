@@ -70,6 +70,7 @@ def process_data(dataframe, stopwords, nlp, mode='none'):
     unwanted_tokens = ['is', 'are', 'have', 'has', 'had', 'was', 
                            'were', '\'s', 'n\'t', '-', '.', '%']
 
+    print("TOKENIZATION IN PROGRESS\n")
     for i in tqdm(range(len(headline_tmp))):
         sentence = headline_tmp[i]
         nlp_sentence = nlp(sentence)
@@ -96,6 +97,7 @@ def process_data(dataframe, stopwords, nlp, mode='none'):
             joined_sentence = re.sub(r"( 's\b|\w*' s\b)", "'s", joined_sentence)
             joined_sentence = re.sub(r"\s{2,}", " ", joined_sentence)
             headlines_lemmas.append(joined_sentence)
+    print("Done")
 
     if len(headlines_lemmas) > 0:
         dataframe.headline = headlines_lemmas
@@ -107,8 +109,81 @@ def process_data(dataframe, stopwords, nlp, mode='none'):
 
         return dataframe
 
+def build_model(max_words, max_len, embedding_dimension, name='Bi-LSTM', 
+                embedding_matrix=None):
+    model = Sequential(name=name)
+    model.add(Embedding(max_words, embedding_dimension, input_length=max_len))
+    model.add(Dropout(0.2))
+    model.add(Bidirectional(LSTM(64, dropout=0.2, return_sequences=True)))
+    model.add(Bidirectional(LSTM(32, dropout=0.2, return_sequences=True)))
+    model.add(GlobalAveragePooling1D())
+    model.add(Dense(256, activation='relu'))
+    model.add(Dropout(0.2))
+    model.add(Dense(128, activation='relu'))
+    model.add(Dense(1, activation='sigmoid'))
+    if embedding_matrix is not None:
+        model.layers[0].set_weights([embedding_matrix])
+        model.layers[0].trainable = False
+    model.summary()
+    model.compile(loss='binary_crossentropy', optimizer='adam', 
+                    metrics=['accuracy'])
+    
+    return model
+
+
+def load_glove_embeddings(embeddings_path, max_words, embedding_dimension, word_index): 
+    embeddings_index = {}
+
+    with open(embeddings_path, 'r', encoding='utf-8') as file:
+        glove_embeddings = file.readlines()
+
+    print("NOW GOING THROUGH GLOVE EMBEDDINGS")
+    for i in tqdm(range(len(glove_embeddings))):
+        line = glove_embeddings[i]
+        values = line.split()
+        word = values[0]
+        coefs = np.asarray(values[1:], dtype='float32')
+        embeddings_index[word] = coefs
+
+    print(f'Found {len(embeddings_index)} word vectors')
+
+    embedding_matrix = np.zeros((max_words, embedding_dimension))
+    for word, i in word_index.items():
+        if i < max_words: 
+            embedding_vector = embeddings_index.get(word)
+            if embedding_vector is not None: 
+                embedding_matrix[i] = embedding_vector
+    print('Done\n')
+
+    return embedding_matrix
+
+
+def prepare_input_data(dataframe, max_len, max_words):
+    tokenizer = Tokenizer(num_words=max_words, 
+                        filters='!"#$%&()*+,-./:;<=>?@[\\]^\'_`{|}~\t\n')
+    tokenizer.fit_on_texts(dataframe['headline'])
+    word_index = tokenizer.word_index
+    dataframe = dataframe.sample(frac=1).reset_index(drop=True)  
+    X = tokenizer.texts_to_sequences(dataframe['headline'])
+    X = pad_sequences(X, maxlen=max_len)
+    y = dataframe['is_sarcastic']
+
+    return word_index, X, y
+
 
 if __name__ == "__main__":
+    max_len = 32
+    embedding_dimension = 300
+    max_words = 25000
+    epochs = 5
+    batch_size = 32
+    callback = EarlyStopping(
+                                monitor="val_accuracy",
+                                patience=5,
+                                verbose=1,
+                                restore_best_weights=True,
+                            )
+     
     datapath =  "input/Sarcasm_Headlines_Dataset_v2.json"
     sarcasm_dataframe = load_training_data(datapath)
     stopwords = load_stopwords('utils/stopwords.txt')
@@ -117,107 +192,11 @@ if __name__ == "__main__":
                                                 'senter', 'sentencizer'])
     processed_dataframe = process_data(sarcasm_dataframe, stopwords, 
                                        nlp, mode='lemmas')
-
-# max_len = 32
-# embedding_dim = 300
-# max_words = 30000
-# test_samples = 8551
-# training_samples = 19952
-
-# tokenizer = Tokenizer(num_words=max_words)
-# tokenizer.fit_on_texts(sarcasm_dataframe.headline)
-# sequences = tokenizer.texts_to_sequences(sarcasm_dataframe.headline)
-# word_index = tokenizer.word_index
-# print(f'Found {len(word_index)} unique tokens')
-
-# data = pad_sequences(sequences, maxlen=max_len)
-# labels = np.asarray(sarcasm_dataframe.is_sarcastic)
-# print(data.shape, labels.shape)
-
-# X_train = data[:training_samples]
-# y_train = labels[:training_samples]
-# X_test = data[training_samples: training_samples + test_samples]
-# y_test = labels[training_samples: training_samples + test_samples]
-
-# embeddings_index = {}
-
-# with open('utils/glove.42B.300d.txt', 'r', encoding='utf-8') as file:
-#     glove_embeddings = file.readlines()
-    
-    
-# for line in glove_embeddings:
-#     values = line.split()
-#     word = values[0]
-#     coefs = np.asarray(values[1:], dtype='float32')
-#     embeddings_index[word] = coefs
-    
-# print(f'Found {len(embeddings_index)} word vectors')
-
-# embedding_matrix = np.zeros((max_words, embedding_dim))
-# for word, i in word_index.items():
-#     if i < max_words: 
-#         embedding_vector = embeddings_index.get(word)
-#         if embedding_vector is not None: 
-#             embedding_matrix[i] = embedding_vector
-
-# # model = Sequential()
-# # model.add(Embedding(max_words, embedding_dim, input_length=max_len))
-# # model.add(Flatten())
-# # model.add(Dense(32, activation='relu'))
-# # model.add(Dense(10, activation='sigmoid'))
-# # model.layers[0].set_weights([embedding_matrix])
-# # model.layers[0].trainable = False
-# # model.summary()
-# # model.compile(optimizer='rmsprop', loss='binary_crossentropy', 
-# #                 metrics=['accuracy'])
-# # history = model.fit(X_train, y_train, epochs=3, batch_size=32, 
-# #                     validation_data=(X_test, y_test))
-
-# callback = EarlyStopping(
-#     monitor="val_accuracy",
-#     patience=5,
-#     verbose=1,
-#     restore_best_weights=True,
-# )
-# model = Sequential()
-# model.add(Embedding(max_words, embedding_dim, input_length=max_len))
-# model.add(Dropout(0.2))
-# model.add(Bidirectional(LSTM(64, dropout=0.2, return_sequences=True)))
-# model.add(Bidirectional(LSTM(32, dropout=0.2, return_sequences=True)))
-# model.add(GlobalAveragePooling1D())
-# model.add(Dense(256, activation='relu'))
-# model.add(Dropout(0.2))
-# model.add(Dense(128, activation='relu'))
-# model.add(Dense(1, activation='sigmoid'))
-# model.layers[0].set_weights([embedding_matrix])
-# model.layers[0].trainable = False
-# model.summary()
-# model.compile(loss='binary_crossentropy', optimizer='adam', 
-#                 metrics=['accuracy'])
-# history = model.fit(X_train, y_train, epochs=15, batch_size=32, 
-#                     validation_data=(X_test, y_test), callbacks=[callback])
-# model.save("models/sarcasm_bilstm.h5")
-# saved_tokenizer = tokenizer.to_json()
-# with open(f'models/sarcasm_bilstm_tokenizer.json', 'w', encoding='utf-8') as jsonfile:
-#     json.dump(saved_tokenizer, jsonfile, ensure_ascii=False)
-                
-# # acc = history.history['accuracy']
-# # val_acc = history.history['val_accuracy']
-# # loss = history.history['loss']
-# # val_loss = history.history['val_loss']
-
-# # epochs = range(1, len(acc) + 1)
-
-# # plt.plot(epochs, acc, 'bo', label='Training accuracy')
-# # plt.plot(epochs, val_acc, 'b', label='Validation accuracy')
-# # plt.title('Training and validation accuracy')
-# # plt.legend()
-
-# # plt.figure()
-
-# # plt.plot(epochs, loss, 'bo', label='Training loss')
-# # plt.plot(epochs, val_loss, 'b', label='Validation loss')
-# # plt.title('Training and validation loss')
-# # plt.legend()
-
-# # plt.show()
+    word_index, X, y = prepare_input_data(processed_dataframe, max_len, max_words)
+    embedding_matrix = load_glove_embeddings('utils/glove.42B.300d.txt', max_words, 
+                                            embedding_dimension, word_index)
+    model = build_model(max_words, max_len, embedding_dimension, 
+                        embedding_matrix=embedding_matrix)
+    print('Switching to training)')
+    model.fit(X, y, validation_split=0.2, epochs=epochs, batch_size=batch_size, 
+             callbacks=[callback])
