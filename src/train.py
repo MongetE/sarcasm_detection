@@ -1,6 +1,8 @@
 import re
 import warnings
 import spacy
+import sys
+import config
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import numpy as np
@@ -171,12 +173,18 @@ def prepare_input_data(dataframe, max_len, max_words):
     return word_index, X, y
 
 
-if __name__ == "__main__":
-    max_len = 32
-    embedding_dimension = 300
-    max_words = 25000
-    epochs = 5
-    batch_size = 32
+def run(glove): 
+    """
+        Run the training process with or without glove embeddings. 
+        Use glove embeddings by default.
+    """
+
+    max_len = config.MAXLEN
+    embedding_dimension = config.EMBEDDINGDIM
+    max_words = config.MAXWORDS
+    epochs = config.EPOCHS
+    batch_size = config.BATCH_SIZE
+
     callback = EarlyStopping(
                                 monitor="val_accuracy",
                                 patience=5,
@@ -184,19 +192,36 @@ if __name__ == "__main__":
                                 restore_best_weights=True,
                             )
      
-    datapath =  "input/Sarcasm_Headlines_Dataset_v2.json"
+    datapath =  config.TRAINING_FILE
     sarcasm_dataframe = load_training_data(datapath)
-    stopwords = load_stopwords('utils/stopwords.txt')
+    stopwords = load_stopwords(config.STOPWORDS)
     nlp = spacy.load('en_core_web_sm', exclude=["ner" 'textcat', 'parser', 
                                                 'textcat_multilabel', 'transformer', 
                                                 'senter', 'sentencizer'])
     processed_dataframe = process_data(sarcasm_dataframe, stopwords, 
                                        nlp, mode='lemmas')
     word_index, X, y = prepare_input_data(processed_dataframe, max_len, max_words)
-    embedding_matrix = load_glove_embeddings('utils/glove.42B.300d.txt', max_words, 
-                                            embedding_dimension, word_index)
+
+    if glove:
+        embedding_matrix = load_glove_embeddings(config.GLOVE, max_words, 
+                                                embedding_dimension, word_index)
+    else: 
+        embedding_matrix = None 
+
     model = build_model(max_words, max_len, embedding_dimension, 
                         embedding_matrix=embedding_matrix)
     print('Switching to training)')
     model.fit(X, y, validation_split=0.2, epochs=epochs, batch_size=batch_size, 
              callbacks=[callback])
+
+
+
+if __name__ == "__main__":
+    try: 
+        glove = sys.argv[1]
+        if glove == "False": 
+            glove = False
+    except IndexError:
+        glove = True
+
+    run(glove)
